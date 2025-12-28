@@ -3,7 +3,10 @@ export async function POST(req) {
 
   const r = await fetch(`${base}/admin/import`, {
     method: "POST",
-    headers: { "content-type": req.headers.get("content-type") || "application/json" },
+    headers: {
+      "content-type": req.headers.get("content-type") || "application/json",
+      "x-admin-key": req.headers.get("x-admin-key") || "",
+    },
     body: await req.text(),
   });
 

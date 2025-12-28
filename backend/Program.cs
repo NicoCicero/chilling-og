@@ -1,8 +1,10 @@
 using Backend.Data;
-using Backend.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using System.Globalization;
+
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,7 +50,20 @@ app.MapGet("/api/season/current", () =>
 
 app.MapGet("/api/leaderboard", async (AppDbContext db, string? season) =>
 {
-    var s = string.IsNullOrWhiteSpace(season) ? "2025-W52" : season.Trim();
+    string s;
+
+    if (string.IsNullOrWhiteSpace(season))
+    {
+        // 🔥 usar la última season cargada
+        s = await db.Leaderboard
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Select(x => x.Season)
+            .FirstOrDefaultAsync() ?? "2025-W52";
+    }
+    else
+    {
+        s = season.Trim();
+    }
 
     var rows = await db.Leaderboard
         .Where(x => x.Season == s)

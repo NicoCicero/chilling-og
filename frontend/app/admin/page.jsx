@@ -3,7 +3,6 @@
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
-
 import { useState } from "react";
 
 export default function AdminPage() {
@@ -14,38 +13,57 @@ export default function AdminPage() {
 
   async function upload() {
     setMsg("");
+
     if (!adminKey || !season || !file) {
       setMsg("Falta Admin Key, season o archivo.");
       return;
     }
+
     try {
       const csv = await file.text();
-      const res = await fetch("/admin/import", {
+
+      // DEBUG: para confirmar que llegó hasta acá
+      setMsg("Subiendo...");
+
+      const res = await fetch("/api/admin/import", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-admin-key": adminKey,
         },
         body: JSON.stringify({ season, csv }),
+        cache: "no-store",
       });
 
-      const json = await res.json().catch(() => ({}));
+      // Leemos como texto primero para NO romper si no es JSON
+      const text = await res.text();
+
+      let json = {};
+      try {
+        json = JSON.parse(text);
+      } catch {
+        // no era JSON, queda vacío
+      }
 
       if (!res.ok) {
-        setMsg(json?.error || "Error al importar el CSV.");
+        // Mostramos el error real si viene en json.error
+        // o el texto crudo si el backend devolvió otra cosa
+        setMsg(json?.error || text || "Error al importar el CSV.");
         return;
       }
 
-      setMsg(`Importado ✅ (${json.imported || 0} usuarios)`);
+      setMsg(`Importado ✅ (${json.imported ?? 0} usuarios)`);
     } catch (error) {
-      setMsg("Error al importar el CSV.");
+      setMsg(`Error al importar el CSV: ${String(error?.message || error)}`);
     }
   }
 
   return (
     <div>
-      <div className="smoke" />
-      <div className="container">
+      {/* IMPORTANTE: esto evita que la capa "smoke" tape los clicks */}
+      <div className="smoke" style={{ pointerEvents: "none" }} />
+
+      <div className="container" style={{ position: "relative", zIndex: 1 }}>
         <div className="header">
           <div className="brand">
             <div className="logo">🛠️</div>
@@ -94,12 +112,24 @@ export default function AdminPage() {
                 accept=".csv"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
+              {file ? (
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Archivo seleccionado: <b>{file.name}</b>
+                </div>
+              ) : null}
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <button className="button" type="button" onClick={upload}>
+              <button
+                className="button"
+                type="button"
+                onClick={() => {
+                  upload();
+                }}
+              >
                 Subir
               </button>
+
               {msg ? <span className="muted">{msg}</span> : null}
             </div>
           </div>
