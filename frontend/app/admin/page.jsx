@@ -18,7 +18,28 @@ export default function AdminPage() {
       setMsg("Falta Admin Key, season o archivo.");
       return;
     }
-    setMsg("OK (demo) ✅");
+    try {
+      const csv = await file.text();
+      const res = await fetch("/admin/import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey,
+        },
+        body: JSON.stringify({ season, csv }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setMsg(json?.error || "Error al importar el CSV.");
+        return;
+      }
+
+      setMsg(`Importado ✅ (${json.imported || 0} usuarios)`);
+    } catch (error) {
+      setMsg("Error al importar el CSV.");
+    }
   }
 
   return (

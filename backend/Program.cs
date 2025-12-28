@@ -111,7 +111,10 @@ app.MapPost("/admin/import", async (HttpRequest req, AppDbContext db, IConfigura
     // nico,Nicolás,15000,5000
     var parsed = ParseCsv(csv);
 
-    if (parsed.Count == 0)
+    if (!string.IsNullOrWhiteSpace(parsed.Error))
+        return Results.BadRequest(new { ok = false, error = parsed.Error });
+
+    if (parsed.Rows.Count == 0)
         return Results.BadRequest(new { ok = false, error = "CSV sin filas válidas." });
 
     // Reemplazar la season completa (simple y efectivo)
@@ -123,7 +126,7 @@ app.MapPost("/admin/import", async (HttpRequest req, AppDbContext db, IConfigura
     }
 
     // Calcular rank: por Prize desc, luego Bet desc (ajustamos cuando definas regla real)
-    var ordered = parsed
+    var ordered = parsed.Rows
         .OrderByDescending(x => x.Prize)
         .ThenByDescending(x => x.Bet)
         .ToList();
@@ -153,7 +156,7 @@ app.Run();
 
 
 // ----- Helpers -----
-static List<LeaderboardRow> ParseCsv(string csv)
+static ParseCsvResult ParseCsv(string csv)
 {
     var list = new List<LeaderboardRow>();
 
@@ -164,27 +167,58 @@ static List<LeaderboardRow> ParseCsv(string csv)
         .Where(x => x.Length > 0)
         .ToList();
 
-    if (lines.Count <= 1) return list;
+    if (lines.Count == 0)
+        return new ParseCsvResult(list, "CSV vacío.");
+
+    var headerParts = lines[0]
+        .Split(',')
+        .Select(x => x.Trim())
+        .ToList();
+
+    if (headerParts.Count == 0)
+        return new ParseCsvResult(list, "Header CSV inválido.");
+
+    headerParts[0] = headerParts[0].TrimStart('\uFEFF');
+
+    var headerMap = headerParts
+        .Select((name, index) => new { name = name.ToLowerInvariant(), index })
+        .ToDictionary(x => x.name, x => x.index);
+
+    var requiredColumns = new[] { "username", "displayname", "prize", "bet" };
+    var missingColumns = requiredColumns.Where(col => !headerMap.ContainsKey(col)).ToList();
+
+    if (missingColumns.Count > 0)
+    {
+        return new ParseCsvResult(list, "Header CSV inválido. Columnas requeridas: username, displayName, prize, bet.");
+    }
+
+    if (lines.Count <= 1) return new ParseCsvResult(list, null);
 
     // 1ra línea header
+    var usernameIndex = headerMap["username"];
+    var displayNameIndex = headerMap["displayname"];
+    var prizeIndex = headerMap["prize"];
+    var betIndex = headerMap["bet"];
+
     for (int i = 1; i < lines.Count; i++)
     {
         var line = lines[i];
         // split simple (si después te pasan comillas y comas adentro, lo mejoramos)
         var parts = line.Split(',');
 
-        if (parts.Length < 4) continue;
+        if (parts.Length <= Math.Max(Math.Max(usernameIndex, displayNameIndex), Math.Max(prizeIndex, betIndex)))
+            continue;
 
-        var username = parts[0].Trim();
-        var displayName = parts[1].Trim();
+        var username = parts[usernameIndex].Trim();
+        var displayName = parts[displayNameIndex].Trim();
 
         if (string.IsNullOrWhiteSpace(username)) continue;
         if (string.IsNullOrWhiteSpace(displayName)) displayName = username;
 
         // números: aceptamos "." o ",". 
         // Convertimos con Invariant y reemplazos básicos
-        if (!TryParseDecimal(parts[2], out var prize)) prize = 0;
-        if (!TryParseDecimal(parts[3], out var bet)) bet = 0;
+        if (!TryParseDecimal(parts[prizeIndex], out var prize)) prize = 0;
+        if (!TryParseDecimal(parts[betIndex], out var bet)) bet = 0;
 
         list.Add(new LeaderboardRow
         {
@@ -195,7 +229,7 @@ static List<LeaderboardRow> ParseCsv(string csv)
         });
     }
 
-    return list;
+    return new ParseCsvResult(list, null);
 
     static bool TryParseDecimal(string s, out decimal val)
     {
@@ -220,3 +254,4 @@ static List<LeaderboardRow> ParseCsv(string csv)
 }
 
 record ImportPayload(string? Season, string? Csv);
+record ParseCsvResult(List<LeaderboardRow> Rows, string? Error);
